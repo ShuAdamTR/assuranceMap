@@ -1,0 +1,26 @@
+@namespace AssuranceMap.Components
+
+<div class="am-shell">
+    <aside class="am-sidebar">
+        <div class="am-brand-block">
+            <div class="am-brand">assuranceMap</div>
+            <div class="am-brand-sub">İç Denetim İnceleme Haritası</div>
+        </div>
+        <nav class="am-nav">
+            <NavLink href="/" Match="NavLinkMatch.All"><span class="nav-ico">▣</span>Dashboard</NavLink>
+            <NavLink href="/harita"><span class="nav-ico">▦</span>Harita</NavLink>
+            <NavLink href="/veri-girisi"><span class="nav-ico">✎</span>Veri Girişi</NavLink>
+            <NavLink href="/evren"><span class="nav-ico">◎</span>Evren Yönetimi</NavLink>
+            <NavLink href="/excel-import"><span class="nav-ico">⇧</span>Excel Import</NavLink>
+            <NavLink href="/ayarlar"><span class="nav-ico">⚙</span>Ayarlar</NavLink>
+        </nav>
+        <div class="am-footer">Kurumsal iç uygulama · v1.0</div>
+    </aside>
+    <main class="am-main">
+        @ChildContent
+    </main>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

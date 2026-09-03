@@ -1,0 +1,134 @@
+@namespace AssuranceMap.Pages
+@page "/ayarlar"
+@rendermode InteractiveServer
+@inject SettingsService Settings
+@inject FieldOptionRepository Options
+
+<PageTitle>Ayarlar — assuranceMap</PageTitle>
+
+<AssuranceMapShell>
+<div class="am-page-head">
+    <div class="am-page-title">Ayarlar</div>
+    <div class="am-page-sub">Geçerlilik süresi, birim→faaliyet eşlemesi ve alan seçenekleri</div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error)) { <div class="am-error">@_error</div> }
+@if (!string.IsNullOrEmpty(_ok)) { <div class="am-ok">@_ok</div> }
+
+<section class="am-card settings-card">
+    <h4>Dashboard geçerlilik (yıl)</h4>
+    <div class="row">
+        <input class="am-input" type="number" min="1" max="50" @bind="_years" />
+        <button class="am-btn am-btn-primary" @onclick="SaveYearsAsync">Kaydet</button>
+    </div>
+    <p class="hint">Harita penceresi sabittir (3 yıl).</p>
+</section>
+
+<section class="am-card">
+    <h4>Birim → Faaliyet (KBU=Uyum, KBD=Denetim)</h4>
+    @foreach (var u in _units)
+    {
+                <div class="row">
+                    <span>@u.Label (@u.Value)</span>
+                    <select value="@GetActivity(u.Value)" @onchange="e => SetActivity(u.Value, e.Value?.ToString())">
+                        <option value="@FieldKeys.ActivityUyum">Uyum</option>
+                        <option value="@FieldKeys.ActivityDenetim">Denetim</option>
+                    </select>
+                </div>
+    }
+    <button class="am-btn am-btn-primary" @onclick="SaveMapAsync">Eşlemeyi kaydet</button>
+</section>
+
+<section class="am-card">
+    <h4>Alan seçenekleri</h4>
+    <select @bind="_fieldKey" @bind:after="LoadFieldAsync">
+        <option value="@FieldKeys.Unit">Birim</option>
+        <option value="@FieldKeys.ReviewStatus">İnceleme Durumu</option>
+        <option value="@FieldKeys.AssuranceLevel">Güvence</option>
+        <option value="@FieldKeys.RiskLevel">Risk</option>
+        <option value="@FieldKeys.ExaminationDepth">Derinlik</option>
+    </select>
+    <ul>
+        @foreach (var o in _options)
+        {
+            <li>
+                <code>@o.Value</code> — @o.Label @(o.IsActive ? "" : "(pasif)")
+                <button class="am-btn" @onclick="() => ToggleOptAsync(o)">@(o.IsActive ? "Pasifleştir" : "Aktifleştir")</button>
+            </li>
+        }
+    </ul>
+    <div class="row">
+        <input @bind="_newValue" placeholder="kod" />
+        <input @bind="_newLabel" placeholder="etiket" />
+        <button class="am-btn" @onclick="AddOptAsync">Ekle</button>
+    </div>
+</section>
+</AssuranceMapShell>
+
+@code {
+    private int _years = 4;
+    private List<FieldOption> _units = [];
+    private Dictionary<string, string> _activityEdits = new();
+    private string _fieldKey = FieldKeys.Unit;
+    private List<FieldOption> _options = [];
+    private string _newValue = "", _newLabel = "";
+    private string? _error, _ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _years = await Settings.GetValidityYearsAsync();
+            _units = (await Options.ListActiveByKeyAsync(FieldKeys.Unit)).ToList();
+            var map = await Settings.GetUnitActivityMapAsync();
+            foreach (var u in _units)
+                _activityEdits[u.Value] = map.GetValueOrDefault(u.Value, FieldKeys.ActivityUyum);
+            await LoadFieldAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private string GetActivity(string unit) =>
+        _activityEdits.GetValueOrDefault(unit, FieldKeys.ActivityUyum);
+
+    private void SetActivity(string unit, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            _activityEdits[unit] = value;
+    }
+
+    private async Task SaveYearsAsync()
+    {
+        try { await Settings.SetValidityYearsAsync(_years); _ok = "Geçerlilik kaydedildi."; }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task SaveMapAsync()
+    {
+        try { await Settings.SetUnitActivityMapAsync(new Dictionary<string, string>(_activityEdits)); _ok = "Eşleme kaydedildi."; }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadFieldAsync()
+    {
+        try { _options = (await Options.ListByKeyAsync(_fieldKey)).ToList(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task ToggleOptAsync(FieldOption o)
+    {
+        try { await Options.SetActiveAsync(o.Id, !o.IsActive); await LoadFieldAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task AddOptAsync()
+    {
+        try
+        {
+            await Options.InsertAsync(_fieldKey, _newValue.Trim(), string.IsNullOrWhiteSpace(_newLabel) ? _newValue.Trim() : _newLabel.Trim(), _options.Count + 1);
+            _newValue = _newLabel = "";
+            await LoadFieldAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

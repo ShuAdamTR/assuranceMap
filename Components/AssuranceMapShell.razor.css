@@ -1,0 +1,456 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,500;0,600;0,700;1,500&display=swap");
+
+/* Token'lar shell üzerinde; sayfa içeriği kalıtımla alır. Host app.css dokunulmaz. */
+.am-shell {
+    --am-navy: #1e3a5f;
+    --am-navy-dark: #152a45;
+    --am-slate: #64748b;
+    --am-bg: #f5f7fa;
+    --am-card: #ffffff;
+    --am-border: #e2e8f0;
+    --am-green: #16a34a;
+    --am-orange: #ea580c;
+    --am-gray: #9ca3af;
+    --am-text: #1a2332;
+    --am-font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+    --am-font-display: "IBM Plex Serif", "Georgia", serif;
+    --am-fs-xs: 0.72rem;
+    --am-fs-sm: 0.8125rem;
+    --am-fs-md: 0.9375rem;
+    --am-fs-lg: 1.0625rem;
+    --am-fs-2xl: 1.75rem;
+    --am-lh-tight: 1.2;
+    --am-lh-snug: 1.35;
+    --am-lh-body: 1.55;
+
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    min-height: 100vh;
+    background: var(--am-bg);
+    color: var(--am-text);
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-md);
+    line-height: var(--am-lh-body);
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+}
+
+.am-shell *,
+.am-shell *::before,
+.am-shell *::after {
+    box-sizing: border-box;
+}
+
+.am-sidebar {
+    background: linear-gradient(180deg, #152a45 0%, #1e3a5f 55%, #243f66 100%);
+    color: #e8eef5;
+    padding: 1.35rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 18px rgba(15, 23, 42, 0.12);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+
+.am-brand-block {
+    padding: 0.15rem 0.4rem 1.15rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 1rem;
+}
+
+.am-brand {
+    font-family: var(--am-font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #fff;
+    line-height: 1.15;
+}
+
+.am-brand-sub {
+    font-family: var(--am-font-sans);
+    font-size: 0.78rem;
+    font-weight: 400;
+    opacity: 0.78;
+    margin-top: 0.35rem;
+    line-height: 1.4;
+}
+
+.am-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1;
+}
+
+/* NavLink <a> child component — isolation için ::deep */
+::deep .am-nav a,
+::deep .am-nav a:link,
+::deep .am-nav a:visited {
+    color: #e8eef5 !important;
+    text-decoration: none !important;
+    padding: 0.55rem 0.7rem;
+    border-radius: 6px;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-sm);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    transition: background 0.15s ease;
+}
+
+::deep .am-nav a:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff !important;
+}
+
+::deep .am-nav a.active {
+    background: rgba(255, 255, 255, 0.16);
+    font-weight: 650;
+    box-shadow: inset 3px 0 0 #ed7d31;
+    color: #fff !important;
+}
+
+.am-nav .nav-ico {
+    width: 1.15rem;
+    text-align: center;
+    opacity: 0.85;
+    font-size: 0.85rem;
+}
+
+.am-footer {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin-top: 1rem;
+    padding: 0.85rem 0.4rem 0.2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.am-main {
+    padding: 1.65rem 1.85rem 2.25rem;
+    min-width: 0;
+}
+
+/* ---- Ortak UI (sayfa içeriği @Body içinde) ---- */
+::deep .am-page-head {
+    margin: 0 0 1.45rem;
+    max-width: 46rem;
+}
+
+::deep .am-page-title {
+    font-family: var(--am-font-display);
+    font-size: clamp(1.55rem, 1.3rem + 0.8vw, 2rem);
+    font-weight: 700;
+    color: var(--am-navy);
+    margin: 0 0 0.45rem;
+    letter-spacing: -0.02em;
+    line-height: var(--am-lh-tight);
+}
+
+::deep .am-page-sub {
+    font-family: var(--am-font-sans);
+    color: var(--am-slate);
+    font-size: var(--am-fs-md);
+    margin: 0;
+    line-height: var(--am-lh-snug);
+    max-width: 42rem;
+}
+
+::deep .am-section-title {
+    font-family: var(--am-font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--am-navy);
+    margin: 0 0 0.7rem;
+}
+
+::deep .am-error {
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+}
+
+::deep .am-ok {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+    padding: 0.65rem 0.85rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+}
+
+::deep .am-card {
+    background: var(--am-card);
+    border: 1px solid var(--am-border);
+    border-radius: 6px;
+    padding: 1rem 1.1rem;
+}
+
+::deep .am-btn {
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: var(--am-text);
+    padding: 0.45rem 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-sm);
+    font-weight: 600;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+::deep .am-btn:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+}
+
+::deep .am-btn-primary {
+    background: var(--am-navy);
+    color: #fff;
+    border-color: var(--am-navy);
+}
+
+::deep .am-btn-primary:hover {
+    background: var(--am-navy-dark);
+    border-color: var(--am-navy-dark);
+    color: #fff;
+}
+
+::deep .am-btn-block {
+    width: 100%;
+}
+
+::deep .am-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 1.5rem;
+    align-items: flex-end;
+    background: #fff;
+    border: 1px solid var(--am-border);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1.15rem;
+}
+
+::deep .am-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 160px;
+}
+
+::deep .am-filter-field label,
+::deep .am-field-label {
+    font-family: var(--am-font-sans);
+    font-size: var(--am-fs-xs);
+    font-weight: 600;
+    color: var(--am-slate);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+::deep .am-filter-field select,
+::deep .am-filter-field input,
+::deep .am-input,
+::deep .am-select,
+::deep .am-textarea {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #fff;
+    color: var(--am-text);
+    min-height: 2.2rem;
+    font: inherit;
+}
+
+::deep .am-filter-field select:focus,
+::deep .am-input:focus,
+::deep .am-select:focus,
+::deep .am-textarea:focus {
+    outline: 2px solid rgba(30, 58, 95, 0.25);
+    outline-offset: 1px;
+    border-color: var(--am-navy);
+}
+
+::deep .am-segment {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    background: #eef2f7;
+    padding: 0.25rem;
+    border-radius: 8px;
+}
+
+::deep .am-segment label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: var(--am-fs-sm);
+    font-weight: 500;
+    color: var(--am-navy);
+    user-select: none;
+}
+
+::deep .am-segment label:has(input:checked),
+::deep .am-segment label.is-active {
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(30, 58, 95, 0.12);
+    font-weight: 600;
+}
+
+::deep .am-segment input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+::deep .am-empty {
+    color: var(--am-slate);
+    background: #fff;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+::deep .am-form-grid {
+    display: grid;
+    gap: 0.45rem;
+    max-width: 680px;
+}
+
+::deep .am-form-grid label {
+    font-size: var(--am-fs-sm);
+    font-weight: 600;
+    margin-top: 0.35rem;
+    color: var(--am-navy);
+}
+
+::deep .am-form-grid input,
+::deep .am-form-grid select,
+::deep .am-form-grid textarea {
+    padding: 0.45rem 0.55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #fff;
+    font: inherit;
+}
+
+::deep .am-form-grid textarea {
+    min-height: 72px;
+    resize: vertical;
+}
+
+::deep .am-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--am-border);
+    border-radius: 8px;
+    background: #fff;
+}
+
+::deep .am-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+::deep .am-table th,
+::deep .am-table td {
+    border-bottom: 1px solid var(--am-border);
+    padding: 0.65rem 0.75rem;
+    text-align: left;
+    vertical-align: middle;
+}
+
+::deep .am-table th {
+    background: #eef2f7;
+    color: var(--am-navy);
+    font-size: var(--am-fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+::deep .am-table tr:last-child td {
+    border-bottom: none;
+}
+
+::deep .am-table tr:hover td {
+    background: #f8fafc;
+}
+
+::deep .am-tabs {
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+::deep .am-tabs button {
+    padding: 0.45rem 0.85rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    cursor: pointer;
+    border-radius: 6px;
+    color: var(--am-navy);
+    font-size: var(--am-fs-sm);
+    font-weight: 600;
+}
+
+::deep .am-tabs button.active {
+    background: var(--am-navy);
+    color: #fff;
+    border-color: var(--am-navy);
+}
+
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+#blazor-error-ui.show {
+    display: block;
+}
+
+@media (max-width: 800px) {
+    .am-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .am-sidebar {
+        position: relative;
+        height: auto;
+        min-height: auto;
+    }
+
+    .am-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .am-main {
+        padding: 1rem;
+    }
+}

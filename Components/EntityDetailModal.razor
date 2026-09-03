@@ -1,0 +1,212 @@
+@namespace AssuranceMap.Components
+@inject ReviewRepository Reviews
+@inject FieldOptionRepository Options
+
+@if (EntityId is int id && id > 0)
+{
+    <div class="am-modal-backdrop" @onclick="CloseAsync">
+        <div class="am-modal" @onclick:stopPropagation="true">
+            <div class="am-modal-header">
+                <div>
+                    <h2 class="am-modal-title">@EntityName</h2>
+                    <div class="am-modal-sub">
+                        @if (_loading)
+                        {
+                            <span>Yükleniyor…</span>
+                        }
+                        else if (_reviews.Count == 0)
+                        {
+                            <span>Bu entity için henüz inceleme kaydı yok.</span>
+                        }
+                        else
+                        {
+                            <span>@_reviews.Count inceleme kaydı · yeniden eskiye</span>
+                        }
+                    </div>
+                </div>
+                <button type="button" class="am-btn" @onclick="CloseAsync">Kapat</button>
+            </div>
+
+            <div class="am-modal-body">
+                @if (NavIds.Count > 1)
+                {
+                    <div class="am-modal-nav">
+                        <button type="button" class="am-btn" disabled="@(!CanPrev)" @onclick="PrevAsync">← Önceki</button>
+                        <button type="button" class="am-btn" disabled="@(!CanNext)" @onclick="NextAsync">Sonraki →</button>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="am-error">@_error</div>
+                }
+
+                @foreach (var r in _reviews)
+                {
+                    <div class="am-detail-card">
+                        <div class="am-detail-card-head">
+                            <div class="am-detail-card-title">@r.ReviewSubject</div>
+                            <div class="am-detail-card-date">@r.ReviewDate.ToString("yyyy-MM-dd")</div>
+                        </div>
+                        <div class="am-detail-chips">
+                            <span class="am-chip am-chip-unit">@Label(FieldKeys.Unit, r.Unit)</span>
+                            <span class="am-chip am-chip-status">@Label(FieldKeys.ReviewStatus, r.ReviewStatus)</span>
+                            <span class="am-chip am-chip-risk">@Label(FieldKeys.RiskLevel, r.RiskLevel)</span>
+                            <span class="am-chip am-chip-assurance">@Label(FieldKeys.AssuranceLevel, r.AssuranceLevel)</span>
+                        </div>
+                        <div class="am-detail-grid">
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">İnceleme Konusu</div>
+                                <div class="am-detail-value">@r.ReviewSubject</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Entity adı</div>
+                                <div class="am-detail-value">@EntityName</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">İnceleme Tarihi</div>
+                                <div class="am-detail-value">@r.ReviewDate.ToString("yyyy-MM-dd")</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Kapsama Alınan Karar Sayısı</div>
+                                <div class="am-detail-value">@r.CoveredDecisionCount</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Karar Sahipliği</div>
+                                <div class="am-detail-value">@(string.IsNullOrWhiteSpace(r.DecisionOwnership) ? "—" : r.DecisionOwnership)</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Birim</div>
+                                <div class="am-detail-value">@Label(FieldKeys.Unit, r.Unit)</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Birim Karar Sayıları</div>
+                                <div class="am-detail-value">@(string.IsNullOrWhiteSpace(r.UnitDecisionCounts) ? "—" : r.UnitDecisionCounts)</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">İnceleme Durumu</div>
+                                <div class="am-detail-value">@Label(FieldKeys.ReviewStatus, r.ReviewStatus)</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Güvence Seviyesi</div>
+                                <div class="am-detail-value">@Label(FieldKeys.AssuranceLevel, r.AssuranceLevel)</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">Risk Seviyesi</div>
+                                <div class="am-detail-value">@Label(FieldKeys.RiskLevel, r.RiskLevel)</div>
+                            </div>
+                            <div class="am-detail-field">
+                                <div class="am-detail-label">İnceleme Derinliği</div>
+                                <div class="am-detail-value">@Label(FieldKeys.ExaminationDepth, r.ExaminationDepth)</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int? EntityId { get; set; }
+    [Parameter] public string EntityName { get; set; } = "";
+    [Parameter] public IReadOnlyList<int> NavIds { get; set; } = Array.Empty<int>();
+    [Parameter] public IReadOnlyDictionary<int, string> NameMap { get; set; } =
+        new Dictionary<int, string>();
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback<(int Id, string Name)> OnNavigate { get; set; }
+
+    private List<Review> _reviews = [];
+    private Dictionary<string, Dictionary<string, string>> _labels = new();
+    private bool _loading;
+    private string? _error;
+    private int? _loadedFor;
+
+    private int CurrentIndex => EntityId is int cur ? IndexOf(NavIds, cur) : -1;
+    private bool CanPrev => CurrentIndex > 0;
+    private bool CanNext => CurrentIndex >= 0 && CurrentIndex < NavIds.Count - 1;
+
+    private static int IndexOf(IReadOnlyList<int> list, int value)
+    {
+        for (var i = 0; i < list.Count; i++)
+            if (list[i] == value) return i;
+        return -1;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (EntityId is int id && id > 0 && _loadedFor != id)
+            await LoadAsync(id);
+        if (EntityId is null)
+        {
+            _loadedFor = null;
+            _reviews = [];
+            _error = null;
+        }
+    }
+
+    private async Task CloseAsync() => await OnClosed.InvokeAsync();
+
+    private async Task PrevAsync()
+    {
+        var i = CurrentIndex;
+        if (i <= 0) return;
+        var id = NavIds[i - 1];
+        await OnNavigate.InvokeAsync((id, NameMap.GetValueOrDefault(id, EntityName)));
+    }
+
+    private async Task NextAsync()
+    {
+        var i = CurrentIndex;
+        if (i < 0 || i >= NavIds.Count - 1) return;
+        var id = NavIds[i + 1];
+        await OnNavigate.InvokeAsync((id, NameMap.GetValueOrDefault(id, EntityName)));
+    }
+
+    private async Task LoadAsync(int entityId)
+    {
+        _loading = true;
+        _error = null;
+        _loadedFor = entityId;
+        try
+        {
+            if (_labels.Count == 0)
+                await WarmLabelsAsync();
+
+            _reviews = (await Reviews.ListByUniverseAsync(entityId))
+                .OrderByDescending(r => r.ReviewDate)
+                .ThenByDescending(r => r.Id)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _reviews = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task WarmLabelsAsync()
+    {
+        foreach (var key in new[]
+                 {
+                     FieldKeys.Unit, FieldKeys.ReviewStatus, FieldKeys.AssuranceLevel,
+                     FieldKeys.RiskLevel, FieldKeys.ExaminationDepth
+                 })
+        {
+            var opts = await Options.ListByKeyAsync(key);
+            _labels[key] = opts.ToDictionary(o => o.Value, o => o.Label, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private string Label(string fieldKey, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "—";
+        if (_labels.TryGetValue(fieldKey, out var map) && map.TryGetValue(value, out var label))
+            return label;
+        return value;
+    }
+}

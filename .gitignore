@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.env
+.venv/
+venv/
+data/*.db
+data/*.db-*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+appsettings.*.local.json
+
+# Local leftovers
+src/
+.pytest_cache/
+

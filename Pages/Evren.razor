@@ -1,0 +1,150 @@
+@namespace AssuranceMap.Pages
+@page "/evren"
+@rendermode InteractiveServer
+@inject UniverseRepository Universes
+
+<PageTitle>Evren Yönetimi — assuranceMap</PageTitle>
+
+<AssuranceMapShell>
+<div class="am-page-head">
+    <div class="am-page-title">Evren Yönetimi</div>
+    <div class="am-page-sub">İştirak / Müdürlük / Ürün entity ekleme, yeniden adlandırma, aktif/pasif</div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error)) { <div class="am-error">@_error</div> }
+@if (!string.IsNullOrEmpty(_ok)) { <div class="am-ok">@_ok</div> }
+
+<div class="am-tabs">
+    @foreach (var t in UniverseTypes.All)
+    {
+        <button class="@(t == _type ? "active" : "")" @onclick="() => Switch(t)">@UniverseTypes.Labels[t]</button>
+    }
+</div>
+
+<div class="am-card" style="margin-bottom:1rem">
+    <h4 class="am-section-title">Yeni ekle</h4>
+    <div class="row">
+        <input class="am-input" @bind="_newName" placeholder="Entity adı" />
+        <button class="am-btn am-btn-primary" @onclick="AddAsync">Ekle</button>
+    </div>
+</div>
+
+<div class="am-table-wrap">
+<table class="am-table">
+    <thead><tr><th>Ad</th><th>Durum</th><th>İşlem</th></tr></thead>
+    <tbody>
+    @foreach (var u in _items)
+    {
+        <tr>
+            <td>
+                @if (_editId == u.Id)
+                {
+                    <input class="am-input" @bind="_editName" />
+                    <button class="am-btn" @onclick="SaveRenameAsync">Kaydet</button>
+                    <button class="am-btn" @onclick="() => _editId = null">Vazgeç</button>
+                }
+                else
+                {
+                    <strong>@u.Name</strong>
+                }
+            </td>
+            <td>
+                <span class="status-pill @(u.IsActive ? "on" : "off")">@(u.IsActive ? "Aktif" : "Pasif")</span>
+            </td>
+            <td class="actions">
+                <button class="am-btn" @onclick="() => StartEdit(u)">Yeniden adlandır</button>
+                <button class="am-btn" @onclick="() => ToggleAsync(u)">@(u.IsActive ? "Pasife al" : "Aktifleştir")</button>
+                <button class="am-btn" @onclick="() => DeleteAsync(u)">Sil</button>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+</div>
+</AssuranceMapShell>
+
+@code {
+    private string _type = UniverseTypes.Istirak;
+    private List<Universe> _items = [];
+    private string _newName = "";
+    private int? _editId;
+    private string _editName = "";
+    private string? _error;
+    private string? _ok;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task Switch(string t)
+    {
+        _type = t;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _error = _ok = null;
+        try
+        {
+            _items = (await Universes.ListByTypeAsync(_type, activeOnly: false)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items = [];
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _error = _ok = null;
+        if (string.IsNullOrWhiteSpace(_newName)) { _error = "Ad zorunlu."; return; }
+        try
+        {
+            await Universes.InsertAsync(_type, _newName.Trim());
+            _newName = "";
+            _ok = "Eklendi.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void StartEdit(Universe u)
+    {
+        _editId = u.Id;
+        _editName = u.Name;
+    }
+
+    private async Task SaveRenameAsync()
+    {
+        if (_editId is null) return;
+        try
+        {
+            await Universes.UpdateNameAsync(_editId.Value, _editName.Trim());
+            _editId = null;
+            _ok = "Güncellendi.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task ToggleAsync(Universe u)
+    {
+        try
+        {
+            await Universes.SetActiveAsync(u.Id, !u.IsActive);
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task DeleteAsync(Universe u)
+    {
+        try
+        {
+            await Universes.DeleteIfNoReviewsAsync(u.Id);
+            _ok = "Silindi.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

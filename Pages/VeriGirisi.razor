@@ -1,0 +1,149 @@
+@namespace AssuranceMap.Pages
+@page "/veri-girisi"
+@rendermode InteractiveServer
+@inject UniverseRepository Universes
+@inject ReviewRepository Reviews
+@inject FieldOptionRepository Options
+
+<PageTitle>Veri Girişi — assuranceMap</PageTitle>
+
+<AssuranceMapShell>
+<div class="am-page-head">
+    <div class="am-page-title">Veri Girişi</div>
+    <div class="am-page-sub">İnceleme kaydı ekleyin</div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error)) { <div class="am-error">@_error</div> }
+@if (!string.IsNullOrEmpty(_ok)) { <div class="am-ok">@_ok</div> }
+
+<div class="am-card am-form-grid">
+    <label>Evren tipi</label>
+    <select class="am-select" @bind="_type" @bind:after="LoadEntitiesAsync">
+        @foreach (var t in UniverseTypes.All)
+        {
+            <option value="@t">@UniverseTypes.Labels[t]</option>
+        }
+    </select>
+
+    <label>Entity</label>
+    <select class="am-select" @bind="_universeId">
+        @foreach (var u in _entities)
+        {
+            <option value="@u.Id">@u.Name</option>
+        }
+    </select>
+
+    <label>İnceleme Konusu</label>
+    <input class="am-input" @bind="_subject" />
+
+    <label>Kapsama Alınan Karar Sayısı</label>
+    <input class="am-input" type="number" @bind="_covered" min="0" />
+
+    <label>Karar Sahipliği</label>
+    <input class="am-input" @bind="_ownership" />
+
+    <label>Birim</label>
+    <select class="am-select" @bind="_unit">@foreach (var o in _units) { <option value="@o.Value">@o.Label</option> }</select>
+
+    <label>İnceleme Tarihi</label>
+    <input class="am-input" type="date" @bind="_date" />
+
+    <label>Birim Karar Sayıları</label>
+    <textarea class="am-textarea" @bind="_unitCounts"></textarea>
+
+    <label>İnceleme Durumu</label>
+    <select class="am-select" @bind="_status">@foreach (var o in _statuses) { <option value="@o.Value">@o.Label</option> }</select>
+
+    <label>Güvence Seviyesi</label>
+    <select class="am-select" @bind="_assurance">@foreach (var o in _assurances) { <option value="@o.Value">@o.Label</option> }</select>
+
+    <label>Risk Seviyesi</label>
+    <select class="am-select" @bind="_risk">@foreach (var o in _risks) { <option value="@o.Value">@o.Label</option> }</select>
+
+    <label>İnceleme Derinliği</label>
+    <select class="am-select" @bind="_depth">@foreach (var o in _depths) { <option value="@o.Value">@o.Label</option> }</select>
+
+    <div style="margin-top:0.75rem">
+        <button class="am-btn am-btn-primary" @onclick="SaveAsync">Kaydet</button>
+    </div>
+</div>
+</AssuranceMapShell>
+
+@code {
+    private string _type = UniverseTypes.Istirak;
+    private List<Universe> _entities = [];
+    private int _universeId;
+    private string _subject = "", _ownership = "", _unit = "KBU", _unitCounts = "";
+    private string _status = "tamamlandi", _assurance = "makul", _risk = "orta", _depth = "tam";
+    private int _covered;
+    private DateTime _date = DateTime.Today;
+    private List<FieldOption> _units = [], _statuses = [], _assurances = [], _risks = [], _depths = [];
+    private string? _error, _ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOptionsAsync();
+        await LoadEntitiesAsync();
+    }
+
+    private async Task LoadOptionsAsync()
+    {
+        try
+        {
+            _units = (await Options.ListActiveByKeyAsync(FieldKeys.Unit)).ToList();
+            _statuses = (await Options.ListActiveByKeyAsync(FieldKeys.ReviewStatus)).ToList();
+            _assurances = (await Options.ListActiveByKeyAsync(FieldKeys.AssuranceLevel)).ToList();
+            _risks = (await Options.ListActiveByKeyAsync(FieldKeys.RiskLevel)).ToList();
+            _depths = (await Options.ListActiveByKeyAsync(FieldKeys.ExaminationDepth)).ToList();
+            if (_units.Count > 0) _unit = _units[0].Value;
+            if (_statuses.Count > 0) _status = _statuses[0].Value;
+            if (_assurances.Count > 0) _assurance = _assurances[0].Value;
+            if (_risks.Count > 0) _risk = _risks[0].Value;
+            if (_depths.Count > 0) _depth = _depths[0].Value;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadEntitiesAsync()
+    {
+        try
+        {
+            _entities = (await Universes.ListByTypeAsync(_type)).ToList();
+            _universeId = _entities.FirstOrDefault()?.Id ?? 0;
+        }
+        catch (Exception ex) { _error = ex.Message; _entities = []; }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = _ok = null;
+        if (_universeId == 0 || string.IsNullOrWhiteSpace(_subject))
+        {
+            _error = "Entity ve konu zorunlu.";
+            return;
+        }
+        try
+        {
+            var dup = await Reviews.FindDuplicateAsync(_universeId, _subject.Trim(), _date);
+            if (dup is not null) { _error = "Aynı entity + konu + tarih zaten var."; return; }
+
+            await Reviews.InsertAsync(new Review
+            {
+                UniverseId = _universeId,
+                ReviewSubject = _subject.Trim(),
+                CoveredDecisionCount = _covered,
+                DecisionOwnership = _ownership,
+                Unit = _unit,
+                ReviewDate = _date,
+                UnitDecisionCounts = _unitCounts,
+                ReviewStatus = _status,
+                AssuranceLevel = _assurance,
+                RiskLevel = _risk,
+                ExaminationDepth = _depth
+            });
+            _ok = "Kayıt oluşturuldu.";
+            _subject = "";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

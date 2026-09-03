@@ -1,0 +1,216 @@
+@namespace AssuranceMap.Pages
+@page "/harita"
+@rendermode InteractiveServer
+@inject MapQueryService MapQuery
+@inject SettingsService Settings
+
+<PageTitle>Harita — assuranceMap</PageTitle>
+
+<AssuranceMapShell>
+<div class="am-page-head">
+    <div class="am-page-title">Evren Haritası</div>
+    <div class="am-page-sub">
+        Renk (derinlik &amp; sıklık) ve sembol (Uyum / Denetim, son 3 yıl).
+        Hücreye gelince özet; tıklayınca detay.
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="am-error">@_error</div>
+}
+
+<div class="filters am-filter-bar">
+    <div class="filter-group">
+        <div class="am-field-label">Görünüm</div>
+        <div class="am-segment">
+            <label class="@(_view == "all" ? "is-active" : null)">
+                <input type="radio" name="view" checked="@(_view == "all")" @onchange='_ => SetView("all")' /> Tümü
+            </label>
+            @foreach (var t in UniverseTypes.All)
+            {
+                <label class="@(_view == t ? "is-active" : null)">
+                    <input type="radio" name="view" checked="@(_view == t)" @onchange="_ => SetView(t)" />
+                    @UniverseTypes.Labels[t]
+                </label>
+            }
+        </div>
+    </div>
+    <div class="filter-group">
+        <div class="am-field-label">Birim</div>
+        <div class="am-segment">
+            @foreach (var (key, label) in _unitOptions)
+            {
+                <label class="@(_unitFilter == key ? "is-active" : null)">
+                    <input type="radio" name="unit" checked="@(_unitFilter == key)" @onchange="_ => SetUnit(key)" />
+                    @label
+                </label>
+            }
+        </div>
+    </div>
+</div>
+
+@foreach (var section in _sections)
+{
+    <div class="map-section">
+        <div class="map-header">@section.Title</div>
+        <div class="map-body">
+            <div class="map-grid">
+                @if (!section.Cells.Any())
+                {
+                    <div class="empty">Bu evrende aktif kayıt yok.</div>
+                }
+                else
+                {
+                    @foreach (var cell in section.Cells)
+                    {
+                        <button type="button"
+                                class="map-cell"
+                                style="background:@cell.Color"
+                                title="@cell.Tooltip"
+                                @onclick="() => OpenDetail(cell, section)">
+                            <span class="cell-sym">@(string.IsNullOrEmpty(cell.Symbol) ? "" : cell.Symbol)</span>
+                            <span class="cell-name">@cell.Name</span>
+                        </button>
+                    }
+                }
+            </div>
+            <div class="map-total">
+                <div class="total-title">Toplam</div>
+                <div class="total-metric"><span>Toplam</span><strong>@section.Total</strong></div>
+                <div class="total-metric"><span>İncelenen</span><strong>@section.Reviewed</strong></div>
+                <div class="total-metric rate"><span>Oran</span><strong>%@section.Rate</strong></div>
+                <div class="total-bar"><span style="width:@section.Rate%"></span></div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="legend">
+    <h4>Renk ve sembol efsanesi</h4>
+    <p class="legend-caption">Harita renkleri sabit 3 yıllık pencereye göre hesaplanır. Birim filtresi renk/sembol hesaplamasını daraltır.</p>
+    <div class="legend-grid">
+        <div>
+            <strong class="legend-head">Renkler</strong>
+            @foreach (var kv in MapColors.Labels)
+            {
+                <div class="legend-row"><span class="swatch" style="background:@kv.Key"></span><span>@kv.Value</span></div>
+            }
+        </div>
+        <div>
+            <strong class="legend-head">Semboller</strong>
+            @foreach (var kv in MapSymbols.Labels)
+            {
+                <div class="legend-row"><span class="sym">@kv.Key</span><span>@kv.Value</span></div>
+            }
+        </div>
+    </div>
+</div>
+
+<EntityDetailModal EntityId="@_selectedId"
+                   EntityName="@_selectedName"
+                   NavIds="@_navIds"
+                   NameMap="@_nameMap"
+                   OnClosed="CloseDetail"
+                   OnNavigate="NavigateDetail" />
+</AssuranceMapShell>
+
+@code {
+    private static readonly (string Key, string Label)[] _unitOptions =
+    [
+        ("all", "Hepsi"),
+        ("KBD", "KBD"),
+        ("KBU", "KBU"),
+        ("KBD-KBU", "KBD-KBU"),
+    ];
+
+    private string _view = "all";
+    private string _unitFilter = "all";
+    private string? _error;
+    private List<SectionVm> _sections = [];
+    private Dictionary<string, string> _unitMap = new(FieldKeys.DefaultUnitActivityMap);
+    private int? _selectedId;
+    private string _selectedName = "";
+    private List<int> _navIds = [];
+    private Dictionary<int, string> _nameMap = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SetView(string v)
+    {
+        _view = v;
+        await LoadAsync();
+    }
+
+    private async Task SetUnit(string u)
+    {
+        _unitFilter = u;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _unitMap = await Settings.GetUnitActivityMapAsync();
+            var types = _view == "all" ? UniverseTypes.All.ToList() : [_view];
+            var sections = new List<SectionVm>();
+            foreach (var t in types)
+            {
+                var (universes, reviews) = await MapQuery.LoadActiveWithReviewsAsync(t);
+                var byU = reviews.GroupBy(r => r.UniverseId).ToDictionary(g => g.Key, g => g.ToList());
+                var filter = _unitFilter == "all" ? null : _unitFilter;
+                var cells = universes.Select(u =>
+                {
+                    byU.TryGetValue(u.Id, out var list);
+                    list ??= [];
+                    var scoped = MapRules.FilterReviewsByUnit(list, filter);
+                    var color = MapRules.ResolveColor(list, unitFilter: filter);
+                    var symbol = MapRules.ResolveSymbol(list, _unitMap, unitFilter: filter);
+                    var last = scoped.Count == 0 ? null : scoped.Max(r => r.ReviewDate).ToString("yyyy-MM-dd");
+                    var colorMeaning = MapColors.Labels.GetValueOrDefault(color, color);
+                    var symbolMeaning = string.IsNullOrEmpty(symbol)
+                        ? "—"
+                        : MapSymbols.Labels.GetValueOrDefault(symbol, symbol);
+                    var tip =
+                        $"{u.Name}\nRenk: {colorMeaning}\nSembol: {symbolMeaning}\nİnceleme: {scoped.Count}\nSon: {last ?? "—"}\nTıklayın → detay popup";
+                    return new CellVm(u.Id, u.Name, symbol, color, scoped.Count, last, tip);
+                }).OrderBy(c => c.Name).ToList();
+
+                var reviewed = cells.Count(c => c.ReviewCount > 0);
+                var rate = cells.Count == 0 ? 0 : (int)Math.Round(100.0 * reviewed / cells.Count);
+                sections.Add(new SectionVm(UniverseTypes.Labels[t], cells, cells.Count, reviewed, rate));
+            }
+            _sections = sections;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Harita yüklenemedi: {ex.Message}";
+            _sections = [];
+        }
+    }
+
+    private void OpenDetail(CellVm cell, SectionVm section)
+    {
+        _navIds = section.Cells.Select(c => c.Id).ToList();
+        _nameMap = section.Cells.ToDictionary(c => c.Id, c => c.Name);
+        _selectedId = cell.Id;
+        _selectedName = cell.Name;
+    }
+
+    private void CloseDetail()
+    {
+        _selectedId = null;
+        _selectedName = "";
+    }
+
+    private void NavigateDetail((int Id, string Name) target)
+    {
+        _selectedId = target.Id;
+        _selectedName = target.Name;
+    }
+
+    private sealed record CellVm(int Id, string Name, string Symbol, string Color, int ReviewCount, string? LastDate, string Tooltip);
+    private sealed record SectionVm(string Title, List<CellVm> Cells, int Total, int Reviewed, int Rate);
+}

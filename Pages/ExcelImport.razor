@@ -1,0 +1,197 @@
+@namespace AssuranceMap.Pages
+@page "/excel-import"
+@rendermode InteractiveServer
+@inject UniverseRepository Universes
+@inject ReviewRepository Reviews
+@inject FieldOptionRepository Options
+
+<PageTitle>Excel Import — assuranceMap</PageTitle>
+
+<AssuranceMapShell>
+<div class="am-page-head">
+    <div class="am-page-title">Excel Import</div>
+    <div class="am-page-sub">ClosedXML ile .xlsx yükleme; kolonlar SP üzerinden kaydedilir</div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error)) { <div class="am-error">@_error</div> }
+@if (!string.IsNullOrEmpty(_ok)) { <div class="am-ok">@_ok</div> }
+
+<div class="am-card am-form-grid" style="max-width:720px">
+    <label>Evren tipi</label>
+    <select class="am-select" @bind="_type">
+        @foreach (var t in UniverseTypes.All)
+        {
+            <option value="@t">@UniverseTypes.Labels[t]</option>
+        }
+    </select>
+
+    <label>Excel dosyası</label>
+    <InputFile OnChange="OnFile" accept=".xlsx" />
+
+    <p class="hint">
+        Beklenen kolonlar: İnceleme Konusu, Entity Adı (veya İştirak/Müdürlük/Ürün Adı),
+        Kapsama Alınan Karar Sayısı, Karar Sahipliği, Birim, İnceleme Tarihi,
+        Birim Karar Sayıları, İnceleme Durumu, Güvence Seviyesi, Risk Seviyesi, İnceleme Derinliği
+    </p>
+
+    @if (_preview.Any())
+    {
+        <div class="am-ok" style="margin:0">@_preview.Count satır önizleme · @_valid geçerli</div>
+        <button class="am-btn am-btn-primary" disabled="@(!_canCommit)" @onclick="CommitAsync">İçe aktar</button>
+    }
+</div>
+</AssuranceMapShell>
+
+@code {
+    private string _type = UniverseTypes.Istirak;
+    private string? _error, _ok;
+    private List<ImportRow> _preview = [];
+    private int _valid;
+    private bool _canCommit;
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        _error = _ok = null;
+        _preview = [];
+        _canCommit = false;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            using var wb = new ClosedXML.Excel.XLWorkbook(ms);
+            var ws = wb.Worksheets.First();
+            var headers = ws.Row(1).CellsUsed().Select(c => c.GetString().Trim()).ToList();
+            var entityCol = _type switch
+            {
+                "istirak" => "İştirak Adı",
+                "mudurluk" => "Müdürlük Adı",
+                "urun" => "Ürün Adı",
+                _ => "Entity Adı"
+            };
+            if (!headers.Contains(entityCol) && headers.Contains("Entity Adı"))
+                entityCol = "Entity Adı";
+
+            var units = (await Options.ListActiveByKeyAsync(FieldKeys.Unit)).ToList();
+            var statuses = (await Options.ListActiveByKeyAsync(FieldKeys.ReviewStatus)).ToList();
+            var assurances = (await Options.ListActiveByKeyAsync(FieldKeys.AssuranceLevel)).ToList();
+            var risks = (await Options.ListActiveByKeyAsync(FieldKeys.RiskLevel)).ToList();
+            var depths = (await Options.ListActiveByKeyAsync(FieldKeys.ExaminationDepth)).ToList();
+
+            var rows = new List<ImportRow>();
+            var last = ws.LastRowUsed()?.RowNumber() ?? 1;
+            for (var r = 2; r <= last; r++)
+            {
+                string Cell(string name)
+                {
+                    var idx = headers.FindIndex(h => h.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    return idx < 0 ? "" : ws.Cell(r, idx + 1).GetFormattedString().Trim();
+                }
+
+                var entity = Cell(entityCol);
+                var subject = Cell("İnceleme Konusu");
+                if (string.IsNullOrWhiteSpace(entity) && string.IsNullOrWhiteSpace(subject)) continue;
+
+                var ok = true;
+                var msg = "";
+                var unit = Resolve(Cell("Birim"), units);
+                var status = Resolve(Cell("İnceleme Durumu"), statuses);
+                var assurance = Resolve(Cell("Güvence Seviyesi"), assurances);
+                var risk = Resolve(Cell("Risk Seviyesi"), risks);
+                var depth = Resolve(Cell("İnceleme Derinliği"), depths);
+                if (unit is null || status is null || assurance is null || risk is null || depth is null)
+                {
+                    ok = false;
+                    msg = "Whitelist alanları geçersiz.";
+                }
+
+                DateTime date = default;
+                var dateRaw = Cell("İnceleme Tarihi");
+                if (!TryParseDate(dateRaw, ws.Cell(r, headers.FindIndex(h => h == "İnceleme Tarihi") + 1), out date))
+                {
+                    ok = false;
+                    msg = "Geçersiz tarih (GG.AA.YYYY / Excel tarih).";
+                }
+
+                _ = int.TryParse(Cell("Kapsama Alınan Karar Sayısı"), out var covered);
+
+                rows.Add(new ImportRow(ok, msg, entity, subject, covered, Cell("Karar Sahipliği"),
+                    unit ?? "", date, Cell("Birim Karar Sayıları"), status ?? "", assurance ?? "", risk ?? "", depth ?? ""));
+            }
+
+            _preview = rows;
+            _valid = rows.Count(x => x.Ok);
+            _canCommit = rows.Count > 0 && _valid == rows.Count;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private static string? Resolve(string raw, List<FieldOption> opts)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var hit = opts.FirstOrDefault(o =>
+            o.Value.Equals(raw, StringComparison.OrdinalIgnoreCase)
+            || o.Label.Equals(raw, StringComparison.OrdinalIgnoreCase));
+        return hit?.Value;
+    }
+
+    private static bool TryParseDate(string raw, ClosedXML.Excel.IXLCell cell, out DateTime date)
+    {
+        date = default;
+        if (cell.DataType == ClosedXML.Excel.XLDataType.DateTime)
+        {
+            date = cell.GetDateTime().Date;
+            return true;
+        }
+        if (DateTime.TryParseExact(raw, new[] { "dd.MM.yyyy", "dd/MM/yyyy" },
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out date))
+            return true;
+        return false;
+    }
+
+    private async Task CommitAsync()
+    {
+        try
+        {
+            var n = 0;
+            foreach (var row in _preview.Where(r => r.Ok))
+            {
+                var u = await Universes.FindByNameAsync(_type, row.Entity);
+                int uid;
+                if (u is null)
+                    uid = await Universes.InsertAsync(_type, row.Entity);
+                else
+                {
+                    if (!u.IsActive) await Universes.SetActiveAsync(u.Id, true);
+                    uid = u.Id;
+                }
+
+                await Reviews.InsertAsync(new Review
+                {
+                    UniverseId = uid,
+                    ReviewSubject = row.Subject,
+                    CoveredDecisionCount = row.Covered,
+                    DecisionOwnership = row.Ownership,
+                    Unit = row.Unit,
+                    ReviewDate = row.Date,
+                    UnitDecisionCounts = row.UnitCounts,
+                    ReviewStatus = row.Status,
+                    AssuranceLevel = row.Assurance,
+                    RiskLevel = row.Risk,
+                    ExaminationDepth = row.Depth
+                });
+                n++;
+            }
+            _ok = $"{n} kayıt içe aktarıldı.";
+            _preview = [];
+            _canCommit = false;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private sealed record ImportRow(
+        bool Ok, string Message, string Entity, string Subject, int Covered, string Ownership,
+        string Unit, DateTime Date, string UnitCounts, string Status, string Assurance, string Risk, string Depth);
+}

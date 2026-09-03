@@ -1,0 +1,201 @@
+@namespace AssuranceMap.Pages
+@page "/"
+@rendermode InteractiveServer
+@inject MapQueryService MapQuery
+@inject SettingsService Settings
+@inject FieldOptionRepository Options
+
+<PageTitle>Dashboard — assuranceMap</PageTitle>
+
+<AssuranceMapShell>
+<div class="am-page-head">
+    <div class="am-page-title">Dashboard</div>
+    <div class="am-page-sub">Evren bazlý inceleme durumu ve entity kartlarý</div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="am-error">@_error</div>
+}
+
+<div class="am-filter-bar">
+    <div class="am-filter-field">
+        <label>Evren</label>
+        <select class="am-select" @bind="_universeType" @bind:after="LoadAsync">
+            @foreach (var t in UniverseTypes.All)
+            {
+                <option value="@t">@UniverseTypes.Labels[t]</option>
+            }
+        </select>
+    </div>
+    <div class="am-filter-field">
+        <label>Durum</label>
+        <select class="am-select" @bind="_statusFilter" @bind:after="ApplyClientFilters">
+            <option value="">Tümü</option>
+            <option value="GREEN">Güncel</option>
+            <option value="ORANGE">@_orangeLabel</option>
+            <option value="GRAY">Hiç Ýncelenmeyen</option>
+        </select>
+    </div>
+    <div class="am-filter-field" style="min-width:220px;flex:1">
+        <label>Ara</label>
+        <input class="am-input" placeholder="Entity / inceleme konusu…" @bind="_search" @bind:event="oninput" @bind:after="ApplyClientFilters" />
+    </div>
+</div>
+
+<div class="am-kpi-row">
+    <div class="am-kpi"><div class="label">Toplam Evren</div><div class="value">@_total</div></div>
+    <div class="am-kpi kpi-green"><div class="label">Güncel Ýncelenen</div><div class="value">@_green</div></div>
+    <div class="am-kpi kpi-orange"><div class="label">@_orangeLabel</div><div class="value">@_orange</div></div>
+    <div class="am-kpi kpi-gray"><div class="label">Hiç Ýncelenmeyen</div><div class="value">@_gray</div></div>
+</div>
+
+@if (_visible.Count == 0 && string.IsNullOrEmpty(_error))
+{
+    <div class="am-empty">Bu filtreye uyan aktif kayýt yok.</div>
+}
+else
+{
+    <div class="am-entity-grid">
+        @foreach (var c in _visible)
+        {
+            <div class="am-entity-card status-@c.Status" title="@c.Tooltip">
+                <span class="am-badge @c.Status">@c.StatusLabel</span>
+                <div class="name">@c.Name</div>
+                <div class="meta">
+                    Son inceleme: @(c.LastDate?.ToString("yyyy-MM-dd") ?? "—")<br />
+                    Risk: @c.RiskLabel
+                </div>
+                <div class="card-actions">
+                    <button type="button" class="am-btn am-btn-block" @onclick="() => OpenDetail(c)">Detay</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<EntityDetailModal EntityId="@_selectedId"
+                   EntityName="@_selectedName"
+                   NavIds="@_navIds"
+                   NameMap="@_nameMap"
+                   OnClosed="CloseDetail"
+                   OnNavigate="NavigateDetail" />
+</AssuranceMapShell>
+
+@code {
+    private string _universeType = UniverseTypes.Istirak;
+    private string _statusFilter = "";
+    private string _search = "";
+    private string? _error;
+    private int _total, _green, _orange, _gray;
+    private int _validityYears = FieldKeys.DefaultValidityYears;
+    private string _orangeLabel = "4+ Yýl Geçen";
+    private List<CardVm> _cards = [];
+    private List<CardVm> _visible = [];
+    private Dictionary<string, string> _riskLabels = new(StringComparer.OrdinalIgnoreCase);
+    private int? _selectedId;
+    private string _selectedName = "";
+    private List<int> _navIds = [];
+    private Dictionary<int, string> _nameMap = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _validityYears = await Settings.GetValidityYearsAsync();
+            _orangeLabel = $"{_validityYears}+ Yýl Geçen";
+
+            if (_riskLabels.Count == 0)
+            {
+                var risks = await Options.ListByKeyAsync(FieldKeys.RiskLevel);
+                _riskLabels = risks.ToDictionary(o => o.Value, o => o.Label, StringComparer.OrdinalIgnoreCase);
+            }
+
+            var (universes, reviews) = await MapQuery.LoadActiveWithReviewsAsync(_universeType);
+            var byU = reviews.GroupBy(r => r.UniverseId).ToDictionary(g => g.Key, g => g.ToList());
+            var asOf = DateTime.Today;
+            _cards = universes.Select(u =>
+            {
+                byU.TryGetValue(u.Id, out var list);
+                list ??= [];
+                var last = list.Count == 0 ? (DateTime?)null : list.Max(r => r.ReviewDate);
+                var status = DashboardStatus.Resolve(last, asOf, _validityYears);
+                var latest = list.OrderByDescending(r => r.ReviewDate).ThenByDescending(r => r.Id).FirstOrDefault();
+                var riskRaw = latest?.RiskLevel;
+                var riskLabel = string.IsNullOrWhiteSpace(riskRaw)
+                    ? "—"
+                    : _riskLabels.GetValueOrDefault(riskRaw, riskRaw);
+                var statusLabel = status switch
+                {
+                    DashboardStatus.Green => "Güncel",
+                    DashboardStatus.Orange => _orangeLabel,
+                    _ => "Hiç Ýncelenmeyen",
+                };
+                var tip = $"{u.Name} | {statusLabel} | Son: {(last?.ToString("yyyy-MM-dd") ?? "—")} | Risk: {riskLabel}";
+                var subjects = string.Join(" ", list.Select(r => r.ReviewSubject));
+                return new CardVm(u.Id, u.Name, status, statusLabel, last, riskLabel, tip, subjects);
+            }).OrderBy(c => c.Name).ToList();
+
+            _total = _cards.Count;
+            _green = _cards.Count(c => c.Status == DashboardStatus.Green);
+            _orange = _cards.Count(c => c.Status == DashboardStatus.Orange);
+            _gray = _cards.Count(c => c.Status == DashboardStatus.Gray);
+            ApplyClientFilters();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Veri yüklenemedi (SQL baðlantýsý / SP kurulumunu kontrol edin): {ex.Message}";
+            _cards = [];
+            _visible = [];
+            _total = _green = _orange = _gray = 0;
+        }
+    }
+
+    private void ApplyClientFilters()
+    {
+        IEnumerable<CardVm> q = _cards;
+        if (!string.IsNullOrWhiteSpace(_statusFilter))
+            q = q.Where(c => c.Status == _statusFilter);
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(c =>
+                c.Name.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                c.Subjects.Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+        _visible = q.ToList();
+    }
+
+    private void OpenDetail(CardVm card)
+    {
+        _navIds = _visible.Select(c => c.Id).ToList();
+        _nameMap = _visible.ToDictionary(c => c.Id, c => c.Name);
+        _selectedId = card.Id;
+        _selectedName = card.Name;
+    }
+
+    private void CloseDetail()
+    {
+        _selectedId = null;
+        _selectedName = "";
+    }
+
+    private void NavigateDetail((int Id, string Name) target)
+    {
+        _selectedId = target.Id;
+        _selectedName = target.Name;
+    }
+
+    private sealed record CardVm(
+        int Id,
+        string Name,
+        string Status,
+        string StatusLabel,
+        DateTime? LastDate,
+        string RiskLabel,
+        string Tooltip,
+        string Subjects);
+}
